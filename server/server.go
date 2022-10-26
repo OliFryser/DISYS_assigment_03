@@ -12,17 +12,32 @@ import (
 
 type Server struct {
 	proto.UnimplementedChittyChatServer
-	port string
+	port            string
+	messageChannels map[string]chan *proto.ServerMessage
 }
 
-var port = flag.String("port", "8080", "Server port")
+var msgStreams []proto.ChittyChat_ClientJoinServer
+
+var (
+	port = flag.String("port", "8080", "Server port")
+)
 
 func main() {
+	// Prints to log file instead of terminal
+	/* f, err := os.OpenFile("logfile", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+
+	log.SetOutput(f) */
+
 	flag.Parse()
 	log.Printf("Server is starting\n")
 
 	server := &Server{
-		port: *port,
+		port:            *port,
+		messageChannels: make(map[string]chan *proto.ServerMessage),
 	}
 
 	go launchServer(server)
@@ -59,6 +74,39 @@ func (s *Server) Broadcast(ctx context.Context, in *proto.ChatMessage) (*proto.C
 		SenderId:    in.SenderId,
 	}
 
-	return chatMessage, nil
+	for _, element := range msgStreams {
+		element.Send(&proto.ServerMessage{
+			Message:     in.SenderId + " said: " + in.Message,
+			LamportTime: in.LamportTime + 1,
+		})
+	}
 
+	return chatMessage, nil
+}
+
+func (s *Server) ClientJoin(in *proto.JoinRequest, msgStream proto.ChittyChat_ClientJoinServer) error {
+	log.Printf("Client %s joined the chat with lamport time %d", in.SenderId, in.LamportTime)
+
+	if s.messageChannels[in.SenderId] == nil {
+		s.messageChannels[in.SenderId] = make(chan *proto.ServerMessage)
+	}
+
+	SendMessagesToClients(s, &proto.ServerMessage{
+		Message:     "Client " + in.SenderId + " has joined the chat room",
+		LamportTime: int64(1),
+	})
+
+	for {
+		select {
+		case message := <-s.messageChannels[in.SenderId]:
+			msgStream.Send(message)
+		}
+
+	}
+}
+
+func SendMessagesToClients(s *Server, out *proto.ServerMessage) {
+	for _, channel := range s.messageChannels {
+		channel <- out
+	}
 }

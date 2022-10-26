@@ -56,7 +56,7 @@ func (c *chittyChatClient) ClientJoin(ctx context.Context, in *JoinRequest, opts
 }
 
 type ChittyChat_ClientJoinClient interface {
-	Recv() (*ChatMessage, error)
+	Recv() (*ServerMessage, error)
 	grpc.ClientStream
 }
 
@@ -64,8 +64,8 @@ type chittyChatClientJoinClient struct {
 	grpc.ClientStream
 }
 
-func (x *chittyChatClientJoinClient) Recv() (*ChatMessage, error) {
-	m := new(ChatMessage)
+func (x *chittyChatClientJoinClient) Recv() (*ServerMessage, error) {
+	m := new(ServerMessage)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func _ChittyChat_ClientJoin_Handler(srv interface{}, stream grpc.ServerStream) e
 }
 
 type ChittyChat_ClientJoinServer interface {
-	Send(*ChatMessage) error
+	Send(*ServerMessage) error
 	grpc.ServerStream
 }
 
@@ -152,7 +152,7 @@ type chittyChatClientJoinServer struct {
 	grpc.ServerStream
 }
 
-func (x *chittyChatClientJoinServer) Send(m *ChatMessage) error {
+func (x *chittyChatClientJoinServer) Send(m *ServerMessage) error {
 	return x.ServerStream.SendMsg(m)
 }
 
