@@ -88,10 +88,8 @@ func (s *Server) ClientJoin(in *proto.JoinRequest, msgStream proto.ChittyChat_Cl
 	log.Printf("Client %s joined the chat with lamport time %d", in.SenderId, in.LamportTime)
 
 	if s.messageChannels[in.SenderId] == nil {
-		log.Printf("Making channel for client %s\n", in.SenderId)
-		s.messageChannels[in.SenderId] = make(chan *proto.ServerMessage)
+		s.messageChannels[in.SenderId] = make(chan *proto.ServerMessage, 10)
 	}
-	log.Printf("Length of the message channels: %d\n", len(s.messageChannels))
 
 	response := &proto.ServerMessage{
 		Message:     "Client " + in.SenderId + " has joined the chat room",
@@ -99,18 +97,14 @@ func (s *Server) ClientJoin(in *proto.JoinRequest, msgStream proto.ChittyChat_Cl
 	}
 
 	for _, channel := range s.messageChannels {
-		log.Printf("Entered the loop\n")
 		channel <- response
-		log.Print("Put the message in channel\n")
 	}
 
 	for {
 		select {
 		case <-msgStream.Context().Done():
-			log.Printf("Client Left")
 			return nil
 		case message := <-s.messageChannels[in.SenderId]:
-			log.Printf("Sending message\n")
 			msgStream.Send(message)
 		}
 	}

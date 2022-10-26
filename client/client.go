@@ -94,7 +94,6 @@ func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient) {
 	//done := make(chan bool)
 	//go func() {
 	for joined {
-		log.Printf("Hej")
 		message, err := messageStream.Recv()
 		if err == io.EOF {
 			log.Printf("Done")
