@@ -19,6 +19,8 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ChittyChatClient interface {
 	Broadcast(ctx context.Context, in *ChatMessage, opts ...grpc.CallOption) (*ChatMessage, error)
+	ClientJoin(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (ChittyChat_ClientJoinClient, error)
+	ClientLeave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*ChatMessage, error)
 }
 
 type chittyChatClient struct {
@@ -38,11 +40,54 @@ func (c *chittyChatClient) Broadcast(ctx context.Context, in *ChatMessage, opts 
 	return out, nil
 }
 
+func (c *chittyChatClient) ClientJoin(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (ChittyChat_ClientJoinClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ChittyChat_ServiceDesc.Streams[0], "/proto.ChittyChat/ClientJoin", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &chittyChatClientJoinClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ChittyChat_ClientJoinClient interface {
+	Recv() (*ChatMessage, error)
+	grpc.ClientStream
+}
+
+type chittyChatClientJoinClient struct {
+	grpc.ClientStream
+}
+
+func (x *chittyChatClientJoinClient) Recv() (*ChatMessage, error) {
+	m := new(ChatMessage)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *chittyChatClient) ClientLeave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*ChatMessage, error) {
+	out := new(ChatMessage)
+	err := c.cc.Invoke(ctx, "/proto.ChittyChat/ClientLeave", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChittyChatServer is the server API for ChittyChat service.
 // All implementations must embed UnimplementedChittyChatServer
 // for forward compatibility
 type ChittyChatServer interface {
 	Broadcast(context.Context, *ChatMessage) (*ChatMessage, error)
+	ClientJoin(*JoinRequest, ChittyChat_ClientJoinServer) error
+	ClientLeave(context.Context, *LeaveRequest) (*ChatMessage, error)
 	mustEmbedUnimplementedChittyChatServer()
 }
 
@@ -52,6 +97,12 @@ type UnimplementedChittyChatServer struct {
 
 func (UnimplementedChittyChatServer) Broadcast(context.Context, *ChatMessage) (*ChatMessage, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Broadcast not implemented")
+}
+func (UnimplementedChittyChatServer) ClientJoin(*JoinRequest, ChittyChat_ClientJoinServer) error {
+	return status.Errorf(codes.Unimplemented, "method ClientJoin not implemented")
+}
+func (UnimplementedChittyChatServer) ClientLeave(context.Context, *LeaveRequest) (*ChatMessage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ClientLeave not implemented")
 }
 func (UnimplementedChittyChatServer) mustEmbedUnimplementedChittyChatServer() {}
 
@@ -84,6 +135,45 @@ func _ChittyChat_Broadcast_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChittyChat_ClientJoin_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(JoinRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ChittyChatServer).ClientJoin(m, &chittyChatClientJoinServer{stream})
+}
+
+type ChittyChat_ClientJoinServer interface {
+	Send(*ChatMessage) error
+	grpc.ServerStream
+}
+
+type chittyChatClientJoinServer struct {
+	grpc.ServerStream
+}
+
+func (x *chittyChatClientJoinServer) Send(m *ChatMessage) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _ChittyChat_ClientLeave_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LeaveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChittyChatServer).ClientLeave(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.ChittyChat/ClientLeave",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChittyChatServer).ClientLeave(ctx, req.(*LeaveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChittyChat_ServiceDesc is the grpc.ServiceDesc for ChittyChat service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -95,7 +185,17 @@ var ChittyChat_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "Broadcast",
 			Handler:    _ChittyChat_Broadcast_Handler,
 		},
+		{
+			MethodName: "ClientLeave",
+			Handler:    _ChittyChat_ClientLeave_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ClientJoin",
+			Handler:       _ChittyChat_ClientJoin_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "proto/chat.proto",
 }

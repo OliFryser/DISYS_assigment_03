@@ -2,6 +2,7 @@ package main
 
 import (
 	"DISYS_assigment_03/proto"
+	"context"
 	"flag"
 	"log"
 	"net"
@@ -11,11 +12,9 @@ import (
 
 type Server struct {
 	proto.UnimplementedChittyChatServer
-	name int64
 	port string
 }
 
-var serverName = flag.Int64("name", 1, "Senders name") //Senders name? Not Servers name?
 var port = flag.String("port", "8080", "Server port")
 
 func main() {
@@ -23,7 +22,6 @@ func main() {
 	log.Printf("Server is starting\n")
 
 	server := &Server{
-		name: *serverName,
 		port: *port,
 	}
 
@@ -45,21 +43,22 @@ func launchServer(server *Server) {
 	log.Printf("Started server at port %s\n", server.port)
 
 	proto.RegisterChittyChatServer(grpcServer, server)
+
 	serveError := grpcServer.Serve(listener)
 	if serveError != nil {
 		log.Fatalf("Could not serve listener\n")
 	}
 }
 
-func Broadcast(clientMessage *proto.ChatMessage) (proto.ChatMessage, error) {
-	log.Printf("Server received message %s, from client %d", clientMessage.Message, clientMessage.SenderId)
+func (s *Server) Broadcast(ctx context.Context, in *proto.ChatMessage) (*proto.ChatMessage, error) {
+	log.Printf("Server received message %s, from client %s", in.Message, in.SenderId)
 
 	chatMessage := &proto.ChatMessage{
-		Message:     clientMessage.Message,
+		Message:     in.Message,
 		LamportTime: int64(1),
-		SenderId:    int64(*serverName),
+		SenderId:    in.SenderId,
 	}
 
-	return *chatMessage, nil
+	return chatMessage, nil
 
 }

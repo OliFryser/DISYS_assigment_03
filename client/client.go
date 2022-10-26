@@ -13,20 +13,21 @@ import (
 )
 
 type Client struct {
-	id   int
+	name string
 	port string
 }
 
 var (
 	clientPort = flag.String("cPort", "8081", "client port number")
-	serverPort = flag.String("sPort", "8080", "server port number (should match the port used for the server")
+	serverPort = flag.String("sPort", "8080", "server port number (should match the port used for the server)")
+	clientName = flag.String("name", "unknown", "name of the client")
 )
 
 func main() {
 	flag.Parse()
 
 	client := &Client{
-		id:   1,
+		name: *clientName,
 		port: *clientPort,
 	}
 
@@ -49,10 +50,10 @@ func WaitForChatMessage(client *Client) {
 		chatMessage, err := serverConnection.Broadcast(context.Background(), &proto.ChatMessage{
 			Message:     input,
 			LamportTime: int64(1),
-			SenderId:    int64(client.id),
+			SenderId:    client.name,
 		})
 		if err != nil {
-			log.Fatalf("Failed to send chatmessage\n")
+			log.Fatalf("Failed to send chatmessage %s\n", err.Error())
 		}
 
 		log.Printf("Client recieved message: \"%s\" from server\n", chatMessage.Message)
