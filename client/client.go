@@ -47,10 +47,15 @@ func WaitForChatMessage(client *Client) {
 		log.Printf("Client typed chat message: %s\n", input)
 
 		chatMessage, err := serverConnection.Broadcast(context.Background(), &proto.ChatMessage{
-			message:     input,
-			lamportTime: int64(1),
-			senderId:    int64(client.id),
+			Message:     input,
+			LamportTime: int64(1),
+			SenderId:    int64(client.id),
 		})
+		if err != nil {
+			log.Fatalf("Failed to send chatmessage\n")
+		}
+
+		log.Printf("Client recieved message: \"%s\" from server\n", chatMessage.Message)
 	}
 
 }

@@ -11,11 +11,11 @@ import (
 
 type Server struct {
 	proto.UnimplementedChittyChatServer
-	name string
+	name int64
 	port string
 }
 
-var serverName = flag.String("name", "default", "Senders name") //Senders name? Not Servers name?
+var serverName = flag.Int64("name", 1, "Senders name") //Senders name? Not Servers name?
 var port = flag.String("port", "8080", "Server port")
 
 func main() {
@@ -49,4 +49,17 @@ func launchServer(server *Server) {
 	if serveError != nil {
 		log.Fatalf("Could not serve listener\n")
 	}
+}
+
+func Broadcast(clientMessage *proto.ChatMessage) (proto.ChatMessage, error) {
+	log.Printf("Server received message %s, from client %d", clientMessage.Message, clientMessage.SenderId)
+
+	chatMessage := &proto.ChatMessage{
+		Message:     clientMessage.Message,
+		LamportTime: int64(1),
+		SenderId:    int64(*serverName),
+	}
+
+	return *chatMessage, nil
+
 }
