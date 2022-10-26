@@ -91,22 +91,24 @@ func WaitForChatMessage(client *Client) {
 }
 
 func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient) {
-	done := make(chan bool)
-	go func() {
-		for joined {
-			message, err := messageStream.Recv()
-			if err == io.EOF {
-				done <- true
-				return
-			}
-			if err != nil {
-				log.Fatalf("Failed to receive message")
-			}
-
-			log.Printf("%s (lamport time: %d)", message.Message, message.LamportTime)
+	//done := make(chan bool)
+	//go func() {
+	for joined {
+		log.Printf("Hej")
+		message, err := messageStream.Recv()
+		if err == io.EOF {
+			log.Printf("Done")
+			//done <- true
+			return
 		}
-	}()
-	<-done
+		if err != nil {
+			log.Fatalf("Failed to receive message")
+		}
+
+		log.Printf("%s (lamport time: %d)", message.Message, message.LamportTime)
+	}
+	//}()
+	//<-done
 }
 
 func connectToServer() (proto.ChittyChatClient, error) {
