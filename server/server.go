@@ -6,6 +6,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"sync/atomic"
 
 	"google.golang.org/grpc"
 )
@@ -14,6 +15,7 @@ type Server struct {
 	proto.UnimplementedChittyChatServer
 	port            string
 	messageChannels map[string]chan *proto.ServerMessage
+	lamportTime     int64
 }
 
 var msgStreams []proto.ChittyChat_ClientJoinServer
@@ -21,6 +23,11 @@ var msgStreams []proto.ChittyChat_ClientJoinServer
 var (
 	port = flag.String("port", "8080", "Server port")
 )
+
+// Function for incrementing lamport time
+func (server *Server) IncrementLamportTime() {
+	atomic.AddInt64(&server.lamportTime, 1)
+}
 
 func main() {
 	// Prints to log file instead of terminal
@@ -38,6 +45,7 @@ func main() {
 	server := &Server{
 		port:            *port,
 		messageChannels: make(map[string]chan *proto.ServerMessage),
+		lamportTime:     1,
 	}
 
 	go launchServer(server)
@@ -65,38 +73,44 @@ func launchServer(server *Server) {
 	}
 }
 
-func (s *Server) Broadcast(ctx context.Context, in *proto.ChatMessage) (*proto.ChatMessage, error) {
+func (server *Server) Broadcast(ctx context.Context, in *proto.ChatMessage) (*proto.ChatMessage, error) {
 	log.Printf("Server received message %s, from client %s", in.Message, in.SenderId)
+
+	// Lamport time equalizes the time of the server and the client
+	if in.LamportTime > int64(server.lamportTime) {
+		server.lamportTime = in.LamportTime + 1
+	} else {
+		server.IncrementLamportTime()
+	}
 
 	chatMessage := &proto.ChatMessage{
 		Message:     in.Message,
-		LamportTime: int64(1),
+		LamportTime: server.lamportTime,
 		SenderId:    in.SenderId,
 	}
 
-	for _, channel := range s.messageChannels {
+	for _, channel := range server.messageChannels {
 		channel <- &proto.ServerMessage{
-			Message:     in.SenderId + " said: " + in.Message,
-			LamportTime: in.LamportTime + 1,
+			Message: in.SenderId + " said: " + in.Message,
 		}
 	}
 
 	return chatMessage, nil
 }
 
-func (s *Server) ClientJoin(in *proto.JoinRequest, msgStream proto.ChittyChat_ClientJoinServer) error {
+func (server *Server) ClientJoin(in *proto.JoinRequest, msgStream proto.ChittyChat_ClientJoinServer) error {
 	log.Printf("Client %s joined the chat with lamport time %d", in.SenderId, in.LamportTime)
 
-	if s.messageChannels[in.SenderId] == nil {
-		s.messageChannels[in.SenderId] = make(chan *proto.ServerMessage, 10)
+	if server.messageChannels[in.SenderId] == nil {
+		server.messageChannels[in.SenderId] = make(chan *proto.ServerMessage, 10)
 	}
 
 	response := &proto.ServerMessage{
 		Message:     "Client " + in.SenderId + " has joined the chat room",
-		LamportTime: int64(1),
+		LamportTime: server.lamportTime,
 	}
 
-	for _, channel := range s.messageChannels {
+	for _, channel := range server.messageChannels {
 		channel <- response
 	}
 
@@ -104,7 +118,7 @@ func (s *Server) ClientJoin(in *proto.JoinRequest, msgStream proto.ChittyChat_Cl
 		select {
 		case <-msgStream.Context().Done():
 			return nil
-		case message := <-s.messageChannels[in.SenderId]:
+		case message := <-server.messageChannels[in.SenderId]:
 			msgStream.Send(message)
 		}
 	}

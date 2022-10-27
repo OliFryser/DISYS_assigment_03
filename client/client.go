@@ -8,14 +8,16 @@ import (
 	"io"
 	"log"
 	"os"
+	"sync/atomic"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Client struct {
-	name string
-	port string
+	name        string
+	port        string
+	lamportTime int64
 }
 
 var (
@@ -25,12 +27,18 @@ var (
 	joined     bool
 )
 
+// Function for incrementing lamport time
+func (client *Client) IncrementLamportTime() {
+	atomic.AddInt64(&client.lamportTime, 1)
+}
+
 func main() {
 	flag.Parse()
 
 	client := &Client{
-		name: *clientName,
-		port: *clientPort,
+		name:        *clientName,
+		port:        *clientPort,
+		lamportTime: 1,
 	}
 
 	go WaitForChatMessage(client)
@@ -55,12 +63,14 @@ func WaitForChatMessage(client *Client) {
 
 		if input == "/join" && !joined {
 			messageStream, err := serverConnection.ClientJoin(context.Background(), &proto.JoinRequest{
-				LamportTime: int64(1),
+				LamportTime: client.lamportTime,
 				SenderId:    client.name,
 			})
+
 			if err != nil {
 				log.Fatalf("Failed to join the chatroom.\n")
 			}
+
 			joined = true
 			/*
 				message, err2 := messageStream.Recv()
@@ -69,7 +79,7 @@ func WaitForChatMessage(client *Client) {
 				}
 				log.Printf("%s (lamport time: %d)", message.Message, message.LamportTime)
 			*/
-			go ReceiveMessages(messageStream)
+			go ReceiveMessages(messageStream, *client)
 			continue
 		}
 		if !joined {
@@ -78,19 +88,20 @@ func WaitForChatMessage(client *Client) {
 		}
 		_, err := serverConnection.Broadcast(context.Background(), &proto.ChatMessage{
 			Message:     input,
-			LamportTime: int64(1),
+			LamportTime: client.lamportTime,
 			SenderId:    client.name,
 		})
 		if err != nil {
 			log.Fatalf("Failed to send chatmessage %s\n", err.Error())
 		}
-
+		//Increments local time when sending a message
+		client.IncrementLamportTime()
 		//log.Printf("Client recieved message: \"%s\" from server\n", chatMessage.Message)
 	}
 
 }
 
-func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient) {
+func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient, client Client) {
 	//done := make(chan bool)
 	//go func() {
 	for joined {
@@ -104,7 +115,14 @@ func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient) {
 			log.Fatalf("Failed to receive message")
 		}
 
-		log.Printf("%s (lamport time: %d)", message.Message, message.LamportTime)
+		//Picks highest value lamport time and increments it
+		if message.LamportTime > int64(client.lamportTime) {
+			client.lamportTime = message.LamportTime + 1
+		} else {
+			client.IncrementLamportTime()
+		}
+
+		log.Printf("%s (lamport time: %d)", message.Message, client.lamportTime)
 	}
 	//}()
 	//<-done
