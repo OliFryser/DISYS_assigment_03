@@ -18,8 +18,6 @@ type Server struct {
 	lamportTime     int64
 }
 
-var msgStreams []proto.ChittyChat_ClientJoinServer
-
 var (
 	port = flag.String("port", "8080", "Server port")
 )
@@ -48,11 +46,7 @@ func main() {
 		lamportTime:     1,
 	}
 
-	go launchServer(server)
-
-	for {
-
-	}
+	launchServer(server)
 }
 
 func launchServer(server *Server) {
@@ -117,9 +111,33 @@ func (server *Server) ClientJoin(in *proto.JoinRequest, msgStream proto.ChittyCh
 	for {
 		select {
 		case <-msgStream.Context().Done():
+			log.Printf("Client %s was closed.\n", in.SenderId)
 			return nil
 		case message := <-server.messageChannels[in.SenderId]:
 			msgStream.Send(message)
 		}
 	}
+}
+
+func (server *Server) ClientLeave(ctx context.Context, in *proto.LeaveRequest) (*proto.ChatMessage, error) {
+	log.Printf("Client %s has requested to leave the chat room (at lamport time: %d).\n", in.SenderId, in.LamportTime)
+
+	response := &proto.ServerMessage{
+		Message:     "Client " + in.SenderId + " has left the chat room",
+		LamportTime: server.lamportTime,
+	}
+
+	for _, channel := range server.messageChannels {
+		channel <- response
+	}
+
+	delete(server.messageChannels, in.SenderId)
+
+	chatMessage := &proto.ChatMessage{
+		Message:     "Client left the chat room.\n",
+		LamportTime: server.lamportTime,
+		SenderId:    in.SenderId,
+	}
+
+	return chatMessage, nil
 }

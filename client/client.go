@@ -55,37 +55,39 @@ func WaitForChatMessage(client *Client) {
 
 	for scanner.Scan() {
 		input := scanner.Text()
+
 		// If the user attempts to send a message longer than 128 characters, the message gets rejected
 		if len(input) > 128 {
-			log.Println("Message is too long, please try again.")
+			log.Println("Message is too long. Write a message under 128 characters.")
 			continue
 		}
 
-		if input == "/join" && !joined {
-			messageStream, err := serverConnection.ClientJoin(context.Background(), &proto.JoinRequest{
-				LamportTime: client.lamportTime,
-				SenderId:    client.name,
-			})
-
-			if err != nil {
-				log.Fatalf("Failed to join the chatroom.\n")
-			}
-
-			joined = true
-			/*
-				message, err2 := messageStream.Recv()
-				if err2 != nil {
-					log.Fatalf("Failed to recieve message.\n")
-				}
-				log.Printf("%s (lamport time: %d)", message.Message, message.LamportTime)
-			*/
-			go ReceiveMessages(messageStream, *client)
-			continue
-		}
+		//Pre-join chat room
 		if !joined {
-			log.Printf("You have to join the chatroom first. Type \"/join\" to join the chatroom.")
+			if input == "/join" {
+				messageStream, err := serverConnection.ClientJoin(context.Background(), &proto.JoinRequest{
+					LamportTime: client.lamportTime,
+					SenderId:    client.name,
+				})
+				if err != nil {
+					log.Fatalf("Failed to join the chatroom.\n")
+				}
+
+				joined = true
+				go ReceiveMessages(messageStream, *client)
+			} else {
+				log.Printf("You have to join the chatroom first. Type \"/join\" to join the chatroom.")
+			}
 			continue
 		}
+
+		//leave handling
+		if input == "/leave" {
+			leaveChatroom(serverConnection, client)
+			continue
+		}
+
+		//Chat messages
 		_, err := serverConnection.Broadcast(context.Background(), &proto.ChatMessage{
 			Message:     input,
 			LamportTime: client.lamportTime,
@@ -96,14 +98,22 @@ func WaitForChatMessage(client *Client) {
 		}
 		//Increments local time when sending a message
 		client.IncrementLamportTime()
-		//log.Printf("Client recieved message: \"%s\" from server\n", chatMessage.Message)
 	}
 
 }
 
+func leaveChatroom(serverConnection proto.ChittyChatClient, client *Client) {
+	joined = false
+	_, err := serverConnection.ClientLeave(context.Background(), &proto.LeaveRequest{
+		LamportTime: client.lamportTime,
+		SenderId:    client.name,
+	})
+	if err != nil {
+		log.Fatalf("Failed to leave the chatroom.\n")
+	}
+}
+
 func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient, client Client) {
-	//done := make(chan bool)
-	//go func() {
 	for joined {
 		message, err := messageStream.Recv()
 		if err == io.EOF {
@@ -112,7 +122,7 @@ func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient, client Cli
 			return
 		}
 		if err != nil {
-			log.Fatalf("Failed to receive message")
+			log.Fatalf("Failed to receive message with error: %s", err)
 		}
 
 		//Picks highest value lamport time and increments it
@@ -124,8 +134,6 @@ func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient, client Cli
 
 		log.Printf("%s (lamport time: %d)", message.Message, client.lamportTime)
 	}
-	//}()
-	//<-done
 }
 
 func connectToServer() (proto.ChittyChatClient, error) {
