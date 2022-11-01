@@ -23,6 +23,7 @@ type Client struct {
 var (
 	clientPort = flag.String("cPort", "8081", "client port number")
 	serverPort = flag.String("sPort", "8080", "server port number (should match the port used for the server)")
+	serverIp   = flag.String("sIP", "localhost:", "The ip of the server")
 	clientName = flag.String("name", "unknown", "name of the client")
 	joined     bool
 )
@@ -41,15 +42,18 @@ func main() {
 		lamportTime: 1,
 	}
 
-	go WaitForChatMessage(client)
+	serverConnection, _ := connectToServer()
+
+	defer leaveChatroom(serverConnection, client)
+
+	go WaitForChatMessage(serverConnection, client)
 
 	for {
 
 	}
 }
 
-func WaitForChatMessage(client *Client) {
-	serverConnection, _ := connectToServer()
+func WaitForChatMessage(serverConnection proto.ChittyChatClient, client *Client) {
 
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -74,12 +78,14 @@ func WaitForChatMessage(client *Client) {
 				}
 
 				joined = true
-				go ReceiveMessages(messageStream, *client)
+				go ReceiveMessages(messageStream, client)
 			} else {
 				log.Printf("You have to join the chatroom first. Type \"/join\" to join the chatroom.")
 			}
 			continue
 		}
+		//Increments local time when sending a message
+		client.IncrementLamportTime()
 
 		//leave handling
 		if input == "/leave" {
@@ -96,8 +102,6 @@ func WaitForChatMessage(client *Client) {
 		if err != nil {
 			log.Fatalf("Failed to send chatmessage %s\n", err.Error())
 		}
-		//Increments local time when sending a message
-		client.IncrementLamportTime()
 	}
 
 }
@@ -113,7 +117,7 @@ func leaveChatroom(serverConnection proto.ChittyChatClient, client *Client) {
 	}
 }
 
-func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient, client Client) {
+func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient, client *Client) {
 	for joined {
 		message, err := messageStream.Recv()
 		if err == io.EOF {
@@ -132,12 +136,12 @@ func ReceiveMessages(messageStream proto.ChittyChat_ClientJoinClient, client Cli
 			client.IncrementLamportTime()
 		}
 
-		log.Printf("%s (lamport time: %d)", message.Message, client.lamportTime)
+		log.Printf("(lamport time: %d)\n%s", client.lamportTime, message.Message)
 	}
 }
 
 func connectToServer() (proto.ChittyChatClient, error) {
-	conn, err := grpc.Dial("localhost:"+*serverPort, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(*serverIp+*serverPort, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Could not connect to port %s\n", *serverPort)
 	}
